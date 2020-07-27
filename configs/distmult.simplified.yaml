@@ -1,0 +1,66 @@
+# Simplified, canonical hyperparameters for DistMult
+
+dataset:
+  name: fb15k-237
+
+distmult:
+  entity_embedder:
+    dropout: 0.4
+    regularize_weight: 3e-09
+  relation_embedder:
+    dropout: 0.4
+    regularize_weight: 8e-15
+
+eval:
+  batch_size: 256
+  metrics_per:
+    relation_type: true
+  trace_level: example
+
+import:
+- distmult
+- reciprocal_relations_model
+
+lookup_embedder:
+  dim: 256
+  initialize: uniform_
+  initialize_args:
+    uniform_:
+      a: 1
+
+  regularize_args:
+    p: 3
+    weighted: false
+
+model: reciprocal_relations_model
+
+negative_sampling:
+  implementation: batch
+  num_samples:
+    o: 500
+    p: -1
+    s: 500
+
+reciprocal_relations_model:
+  base_model:
+    type: distmult
+
+# nb: no scheduler, no early stopping
+train:
+  auto_correct: true
+  batch_size: 1024
+  loss: kl
+  loss_arg: .nan
+
+  max_epochs: 400
+  optimizer_args:
+    lr: 0.1
+
+  type: negative_sampling
+
+valid:
+  every: 10
+  early_stopping:
+    patience: 0 # no early stoppping
+
+

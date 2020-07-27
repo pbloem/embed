@@ -6,69 +6,87 @@ import torch.nn.functional as F
 import util
 from util import d, tic, toc
 
-def distmult(triples, nodes, relations, biases=None, forward=True):
-    """
-    Implements the distmult score function.
+class Decoder(nn.Module):
 
-    :param triples: batch of triples, (b, 3) integers
-    :param nodes: node embeddings
-    :param relations: relation embeddings
-    :return:
-    """
+    def __init__(self, e):
+        super().__init__()
 
-    b, _ = triples.size()
+        self.e = e
 
-    a, b = (0, 2) if forward else (2, 0)
+    def s_dim(self):
+        return self.e
 
-    si, pi, oi = triples[:, a], triples[:, 1], triples[:, b]
+    def p_dim(self):
+        return self.e
 
-    # s, p, o = nodes[s, :], relations[p, :], nodes[o, :]
+    def o_dim(self):
+        return self.e
 
-    # faster?
-    s = nodes.index_select(dim=0,     index=si)
-    p = relations.index_select(dim=0, index=pi)
-    o = nodes.index_select(dim=0,     index=oi)
+class DistMult(Decoder):
 
-    baseterm = (s * p * o).sum(dim=1)
+    def __init__(self, e):
+        super().__init__(e)
 
-    if biases is None:
-        return baseterm
+    def forward(self, triples, nodes, relations, forward=True):
+        """
+        Implements the distmult score function.
 
-    gb, sb, pb, ob = biases
+        :param triples: batch of triples, (b, 3) integers
+        :param nodes: node embeddings
+        :param relations: relation embeddings
+        :return:
+        """
 
-    return baseterm + sb[si] + pb[pi] + ob[oi] + gb
+        b, _ = triples.size()
 
-def transe(triples, nodes, relations, biases=None, forward=True):
-    """
-    Implements the distmult score function.
+        a, b = (0, 2) if forward else (2, 0)
 
-    :param triples: batch of triples, (b, 3) integers
-    :param nodes: node embeddings
-    :param relations: relation embeddings
-    :return:
-    """
+        si, pi, oi = triples[:, a], triples[:, 1], triples[:, b]
 
-    b, _ = triples.size()
+        s, p, o = nodes[si, :], relations[pi, :], nodes[oi, :]
+        #
+        # # faster?
+        # s = nodes.index_select(dim=0,     index=si)
+        # p = relations.index_select(dim=0, index=pi)
+        # o = nodes.index_select(dim=0,     index=oi)
 
-    a, b = (0, 2) if forward else (2, 0)
+        return (s * p * o).sum(dim=1)
 
-    si, pi, oi = triples[:, a], triples[:, 1], triples[:, b]
+class TransE(Decoder):
 
-    # s, p, o = nodes[s, :], relations[p, :], nodes[o, :]
+    def __init__(self, e):
+        super().__init__(e)
 
-    # faster?
-    s = nodes.index_select(dim=0,     index=si)
-    p = relations.index_select(dim=0, index=pi)
-    o = nodes.index_select(dim=0,     index=oi)
+    def forward(self, triples, nodes, relations, forward=True):
+        """
+        Implements the distmult score function.
 
-    baseterm = (s + p - o).norm(p=2, dim=1)
+        :param triples: batch of triples, (b, 3) integers
+        :param nodes: node embeddings
+        :param relations: relation embeddings
+        :return:
+        """
 
-    if biases is None:
-        return baseterm
+        b, _ = triples.size()
 
-    gb, sb, pb, ob = biases
+        a, b = (0, 2) if forward else (2, 0)
 
-    return baseterm + sb[si] + pb[pi] + ob[oi] + gb
+        si, pi, oi = triples[:, a], triples[:, 1], triples[:, b]
+        s, p, o = nodes[si, :], relations[pi, :], nodes[oi, :]
+
+        return (s + p - o).norm(p=2, dim=1)
+
+def init(tensor, method, parms):
+    if method == 'uniform':
+        nn.init.uniform_(tensor, parms[0], parms[1])
+    elif method == 'glorot_normal':
+        nn.init.xavier_normal_(tensor, gain=parms[0])
+    elif method == 'glorot_uniform':
+        nn.init.xavier_uniform_(tensor, gain=parms[0])
+    elif method == 'normal':
+        nn.init.normal_(tensor, parms[0], parms[1])
+    else:
+        raise Exception(f'Initialization method {method} not recognized.')
 
 class LinkPredictor(nn.Module):
     """
@@ -77,7 +95,8 @@ class LinkPredictor(nn.Module):
     Outputs raw (linear) scores for the given triples.
     """
 
-    def __init__(self, triples, n, r, embedding=512, decoder='distmult', edropout=None, rdropout=None, init=0.85, biases=False, reciprocal=False):
+    def __init__(self, triples, n, r, embedding=512, decoder='distmult', edropout=None, rdropout=None, init=0.85,
+                 biases=False, init_method='uniform', init_parms=(-1.0, 1.0), reciprocal=False):
 
         super().__init__()
 
@@ -87,15 +106,19 @@ class LinkPredictor(nn.Module):
         self.e = embedding
         self.reciprocal = reciprocal
 
-        self.entities  = nn.Parameter(torch.FloatTensor(n, self.e).uniform_(-init, init))
-        self.relations = nn.Parameter(torch.FloatTensor(r, self.e).uniform_(-init, init))
+        self.entities  = nn.Parameter(torch.FloatTensor(n, self.e))
+        init(self.entities, init_method, init_parms)
+        self.relations = nn.Parameter(torch.FloatTensor(r, self.e))
+        init(self.relations, init_method, init_parms)
+
         if reciprocal:
             self.relations_backward = nn.Parameter(torch.FloatTensor(r, self.e).uniform_(-init, init))
+            init(self.relations, init_method, init_parms)
 
         if decoder == 'distmult':
-            self.decoder = distmult
+            self.decoder = DistMult(embedding)
         elif decoder == 'transe':
-            self.decoder = transe
+            self.decoder = TransE(embedding)
         else:
             raise Exception()
 
@@ -122,6 +145,10 @@ class LinkPredictor(nn.Module):
 
         dims = batch.size()[:-1]
         batch = batch.reshape(-1, 3)
+        # -- we assume that the last dimension has size 3 (these are the triples), the rest of the dimensions are
+        #    folded into one. We compute the scores for each triple and reshape to the original dimensions before
+        #    returning the scores (that is, we return one score for each triple, with the rest of the dimensions as
+        #    provided).
 
         for forward in [True, False] if self.reciprocal else [True]:
 
@@ -134,14 +161,13 @@ class LinkPredictor(nn.Module):
                 relations = self.rdo(relations)
 
             if self.biases:
-                if forward:
-                    biases = (self.gbias, self.sbias, self.pbias,    self.obias)
-                else:
-                    biases = (self.gbias, self.sbias, self.pbias_bw, self.obias)
-            else:
-                biases = None
+                pb = self.pbias if forward else self.pbias_bw,
 
-            scores = scores + self.decoder(batch, nodes, relations, biases=biases, forward=forward)
+                a, b = (0, 2) if forward else (2, 0)
+                si, pi, oi = batch[:, a], batch[:, 1], batch[:, b]
+                biasterm = self.sbias[si] + pb[pi] + self.obias[oi] + self.gbias
+
+            scores = scores + self.decoder(batch, nodes, relations, forward=forward) + biasterm
 
             assert scores.size() == (util.prod(dims), )
 

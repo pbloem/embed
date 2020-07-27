@@ -417,10 +417,19 @@ if __name__ == "__main__":
                         default=None, type=float)
 
     parser.add_argument("-T", "--tb_dir", dest="tb_dir",
-                        help="Data directory",
+                        help="Tensorboard directory",
                         default=None)
 
+    parser.add_argument("--init",
+                        dest="init",
+                        help="Initialization method (inform, normal, glorot_uniform, glorot_normal).",
+                        default='uniform', type=str)
 
+    parser.add_argument("--init-parms",
+                        dest="init_parms",
+                        help="Initializer parameters (uniform: interval bounds, normal: mean, std, glorot: gain). The second parameter is ignored for glorot init.",
+                        nargs=2,
+                        default=(-1.0, 1.0), type=float)
 
     options = parser.parse_args()
 
