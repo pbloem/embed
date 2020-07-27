@@ -76,7 +76,7 @@ class TransE(Decoder):
 
         return (s + p - o).norm(p=2, dim=1)
 
-def init(tensor, method, parms):
+def initialize(tensor, method, parms):
     if method == 'uniform':
         nn.init.uniform_(tensor, parms[0], parms[1])
     elif method == 'glorot_normal':
@@ -107,13 +107,13 @@ class LinkPredictor(nn.Module):
         self.reciprocal = reciprocal
 
         self.entities  = nn.Parameter(torch.FloatTensor(n, self.e))
-        init(self.entities, init_method, init_parms)
+        initialize(self.entities, init_method, init_parms)
         self.relations = nn.Parameter(torch.FloatTensor(r, self.e))
-        init(self.relations, init_method, init_parms)
+        initialize(self.relations, init_method, init_parms)
 
         if reciprocal:
             self.relations_backward = nn.Parameter(torch.FloatTensor(r, self.e).uniform_(-init, init))
-            init(self.relations, init_method, init_parms)
+            initialize(self.relations, init_method, init_parms)
 
         if decoder == 'distmult':
             self.decoder = DistMult(embedding)
@@ -160,14 +160,14 @@ class LinkPredictor(nn.Module):
             if self.rdo is not None:
                 relations = self.rdo(relations)
 
+            scores = scores + self.decoder(batch, nodes, relations, forward=forward)
+
             if self.biases:
                 pb = self.pbias if forward else self.pbias_bw,
 
                 a, b = (0, 2) if forward else (2, 0)
                 si, pi, oi = batch[:, a], batch[:, 1], batch[:, b]
-                biasterm = self.sbias[si] + pb[pi] + self.obias[oi] + self.gbias
-
-            scores = scores + self.decoder(batch, nodes, relations, forward=forward) + biasterm
+                scores = scores + self.sbias[si] + pb[pi] + self.obias[oi] + self.gbias
 
             assert scores.size() == (util.prod(dims), )
 

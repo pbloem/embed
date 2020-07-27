@@ -125,7 +125,8 @@ def go(arg):
         """
         model = embed.LinkPredictor(
             triples=train, n=len(i2n), r=len(i2r), embedding=arg.emb, biases=arg.biases,
-            edropout = arg.edo, rdropout=arg.rdo, decoder=arg.decoder)
+            edropout = arg.edo, rdropout=arg.rdo, decoder=arg.decoder, reciprocal=arg.reciprocal,
+            init_method=arg.init_method, init_parms=arg.init_parms)
 
         if torch.cuda.is_available():
             prt('Using CUDA.')
@@ -421,7 +422,7 @@ if __name__ == "__main__":
                         default=None)
 
     parser.add_argument("--init",
-                        dest="init",
+                        dest="init_method",
                         help="Initialization method (inform, normal, glorot_uniform, glorot_normal).",
                         default='uniform', type=str)
 
