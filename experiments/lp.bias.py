@@ -154,11 +154,11 @@ def go(arg):
         for e in range(arg.epochs):
 
             seeni, sumloss = 0, 0.0
+            tforward = tbackward = 0
 
             for fr in trange(0, train.size(0), arg.batch):
                 to = min(train.size(0), fr + arg.batch)
 
-                tic()
                 model.train(True)
 
                 opt.zero_grad()
@@ -196,7 +196,10 @@ def go(arg):
                             #    (It may seem like the model could easily cheat by always choosing triple 0, but the score
                             #    function is order equivariant, so it can't choose by ordering.)
 
+                        tic()
                         out = model(s, p, o)
+                        tforward += toc()
+
                         assert out.size() == (bs, ng + 1), f'{out.size()=} {(bs, ng + 1)=}'
 
                         if arg.loss == 'bce':
@@ -204,24 +207,33 @@ def go(arg):
                         elif arg.loss == 'ce':
                             loss = F.cross_entropy(out, labels, reduction=arg.lred)
 
-                        if arg.reg_eweight is not None:
-                            loss = loss + model.penalty(which='entities', p=arg.reg_exp, rweight=arg.reg_eweight)
-
-                        if arg.reg_rweight is not None:
-                            loss = loss + model.penalty(which='relations', p=arg.reg_exp, rweight=arg.reg_rweight)
-
                         assert not torch.isnan(loss), 'Loss has become NaN'
-
-                        loss.backward()
-                        # No step yet, we accumulate the gradients over all corruptions.
-                        # -- this causes problems with modules like batchnorm, so be careful when porting.
 
                         sumloss += float(loss.item())
                         seen += bs; seeni += bs
 
+                        tic()
+                        loss.backward()
+                        tbackward += toc()
+                        # No step yet, we accumulate the gradients over all corruptions.
+                        # -- this causes problems with modules like batchnorm, so be careful when porting.
+
+                regloss = None
+                if arg.reg_eweight is not None:
+                    regloss = model.penalty(which='entities', p=arg.reg_exp, rweight=arg.reg_eweight)
+
+                if arg.reg_rweight is not None:
+                    regloss = model.penalty(which='relations', p=arg.reg_exp, rweight=arg.reg_rweight)
+
+                if regloss is not None:
+                    sumloss += float(loss.item())
+                    loss.backward()
+
                 opt.step()
 
                 tbw.add_scalar('biases/train_loss', float(loss.item()), seen)
+
+            print(f'\n forward {tforward:.4}, backward {tbackward:.4}')
 
             # Evaluate
             if ((e+1) % arg.eval_int == 0) or e == arg.epochs - 1:
