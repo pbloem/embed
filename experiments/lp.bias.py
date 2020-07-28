@@ -163,7 +163,7 @@ def go(arg):
 
                 opt.zero_grad()
 
-                positives = train[fr:to]
+                positives = train[fr:to].to(d())
 
                 for ctarget in [0, 1, 2]: # which part of the triple to corrupt
                     ng = arg.negative_rate[ctarget]
@@ -188,17 +188,13 @@ def go(arg):
                         #    In most cases we can optimize the decoder to broadcast late for better speed.
 
                         if arg.loss == 'bce':
-                            labels = torch.cat([torch.ones(bs, 1), torch.zeros(bs, ng)], dim=1)
+                            labels = torch.cat([torch.ones(bs, 1, device=d()), torch.zeros(bs, ng, device=d())], dim=1)
                         elif arg.loss == 'ce':
-                            labels = torch.zeros(bs, dtype=torch.long)
+                            labels = torch.zeros(bs, dtype=torch.long, device=d())
                             # -- CE loss treats the problem as a multiclass classification problem: for a positive triple,
                             #    together with its k corruptions, identify which is the true triple. This is always triple 0.
                             #    (It may seem like the model could easily cheat by always choosing triple 0, but the score
                             #    function is order equivariant, so it can't choose by ordering.)
-
-                        if torch.cuda.is_available():
-                            s, p, o = s.cuda(), p.cuda(), o.cuda()
-                            labels = labels.cuda()
 
                         out = model(s, p, o)
                         assert out.size() == (bs, ng + 1), f'{out.size()=} {(bs, ng + 1)=}'
