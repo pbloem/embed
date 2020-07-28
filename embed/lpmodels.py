@@ -6,6 +6,8 @@ import torch.nn.functional as F
 import util
 from util import d, tic, toc
 
+from abc import abstractmethod
+
 class Decoder(nn.Module):
 
     def __init__(self, e):
@@ -22,35 +24,36 @@ class Decoder(nn.Module):
     def o_dim(self):
         return self.e
 
+    @abstractmethod
+    def forward(self, triples, corruptions, corr_index, entities, relations, forward):
+        pass
+
 class DistMult(Decoder):
 
     def __init__(self, e):
         super().__init__(e)
 
-    def forward(self, triples, nodes, relations, forward=True):
+    def forward(self, si, pi, oi, nodes, relations):
         """
         Implements the distmult score function.
-
-        :param triples: batch of triples, (b, 3) integers
-        :param nodes: node embeddings
-        :param relations: relation embeddings
-        :return:
         """
 
-        b, _ = triples.size()
-
-        a, b = (0, 2) if forward else (2, 0)
-
-        si, pi, oi = triples[:, a], triples[:, 1], triples[:, b]
-
         s, p, o = nodes[si, :], relations[pi, :], nodes[oi, :]
-        #
-        # # faster?
-        # s = nodes.index_select(dim=0,     index=si)
-        # p = relations.index_select(dim=0, index=pi)
-        # o = nodes.index_select(dim=0,     index=oi)
 
-        return (s * p * o).sum(dim=1)
+        if len(s.size()) == len(p.size()) == len(o.size()): # optimizations for common broadcasting
+            if pi.size(-1) == 1 and oi.size(-1) == 1:
+                singles = p * o # ignoring batch dimensions, this is a single vector
+                return torch.matmul(s, singles.transpose(-1, -2)).squeeze(-1)
+
+            if si.size(-1) == 1 and oi.size(-1) == 1:
+                singles = s * o
+                return torch.matmul(p, singles.transpose(-1, -2)).squeeze(-1)
+
+            if si.size(-1) == 1 and pi.size(-1) == 1:
+                singles = s * p
+                return torch.matmul(o, singles.transpose(-1, -2)).squeeze(-1)
+
+        return (s * p * o).sum(dim=-1)
 
 class TransE(Decoder):
 
@@ -135,46 +138,47 @@ class LinkPredictor(nn.Module):
             if reciprocal:
                 self.pbias_bw = nn.Parameter(torch.zeros((r,)))
 
-    def forward(self, batch):
+    def forward(self, s, p, o):
+        """
+        Takes a batch of triples in s, p, o indices, and computes their scores.
+
+        If s, p and o have more than one dimension, and the same shape, the resulting score
+        tensor has that same shape.
+
+        If s, p and o have more than one dimension and mismatching shape, they are broadcast together
+        and the score tensor has the broadcast shape. If broadcasting fails, the method fails. In order to trigger the
+        correct optimizations, it's best to ensure that all tensors have the same dimensions.
+
+        :param s:
+        :param p:
+        :param o:
+        :return:
+        """
 
         scores = 0
 
-        assert batch.size(-1) == 3
-
-        n, r = self.n, self.r
-
-        dims = batch.size()[:-1]
-        batch = batch.reshape(-1, 3)
-        # -- we assume that the last dimension has size 3 (these are the triples), the rest of the dimensions are
-        #    folded into one. We compute the scores for each triple and reshape to the original dimensions before
-        #    returning the scores (that is, we return one score for each triple, with the rest of the dimensions as
-        #    provided).
-
         for forward in [True, False] if self.reciprocal else [True]:
+
+            si, pi, oi = (s, p, o) if forward else (o, p, s)
 
             nodes = self.entities
             relations = self.relations if forward else self.relations_backward
 
-            if self.edo is not None:
-                nodes = self.edo(nodes)
-            if self.rdo is not None:
-                relations = self.rdo(relations)
+            # Apply dropout
+            nodes = nodes if self.edo is None else self.edo(nodes)
+            relations = relations if self.rdo is None else self.rdo(relations)
 
-            scores = scores + self.decoder(batch, nodes, relations, forward=forward)
+            scores = scores + self.decoder(si, pi, oi, nodes, relations)
+            # -- We let the decoder handle the broadcasting
 
             if self.biases:
                 pb = self.pbias if forward else self.pbias_bw,
-
-                a, b = (0, 2) if forward else (2, 0)
-                si, pi, oi = batch[:, a], batch[:, 1], batch[:, b]
                 scores = scores + self.sbias[si] + pb[pi] + self.obias[oi] + self.gbias
-
-            assert scores.size() == (util.prod(dims), )
 
         if self.reciprocal:
             scores = scores / 2
 
-        return scores.view(*dims)
+        return scores
 
     def penalty(self, rweight, p, which):
 

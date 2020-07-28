@@ -156,72 +156,75 @@ def go(arg):
             seeni, sumloss = 0, 0.0
 
             for fr in trange(0, train.size(0), arg.batch):
+                to = min(train.size(0), fr + arg.batch)
 
                 tic()
                 model.train(True)
 
-                # if torch.cuda.is_available() and random.random() < 0.01:
-                #     print(f'\nPeak gpu memory use is {torch.cuda.max_memory_cached() / 1e9:.2} Gb')
-
-                to = min(train.size(0), fr + arg.batch)
-
-                with torch.no_grad():
-                    positives = train[fr:to]
-
-                    b, _ = positives.size()
-
-                    ttriples = []
-                    for target, ng in zip([0, 1, 2], arg.negative_rate):
-                        if ng > 0:
-
-                            negatives = positives.clone()[:, None, :].expand(b, ng, 3).contiguous()
-                            corrupt_one(negatives, ccandidates[target] if arg.limit_negatives else range(len(i2n)), target)
-
-                            ttriples.append(torch.cat([positives[:, None, :], negatives], dim=1))
-
-                    triples = torch.cat(ttriples, dim=0)
-
-                    b, _, _ = triples.size()
-
-                    if arg.loss == 'bce':
-                        labels = torch.cat([torch.ones(b, 1), torch.zeros(b, ng)], dim=1)
-                    elif arg.loss == 'ce':
-                        labels = torch.zeros(b, dtype=torch.long)
-                        # -- CE loss treats the problem as a multiclass classification problem: for a positive triple,
-                        #    together with its k corruptions, identify which is the true triple. This is always triple 0.
-                        #    (It may seem like the model could easily cheat by always choosing triple 0, but the score
-                        #    function is order equivariant, so it can't choose by ordering.)
-
-                    if torch.cuda.is_available():
-                        triples = triples.cuda()
-                        labels = labels.cuda()
-
                 opt.zero_grad()
 
-                out = model(triples)
+                positives = train[fr:to]
 
-                if arg.loss == 'bce':
-                    loss = F.binary_cross_entropy_with_logits(out, labels, weight=weight, reduction=arg.lred)
-                elif arg.loss == 'ce':
-                    loss = F.cross_entropy(out, labels, reduction=arg.lred)
+                for ctarget in [0, 1, 2]: # which part of the triple to corrupt
+                    ng = arg.negative_rate[ctarget]
 
-                if arg.reg_eweight is not None:
-                    loss = loss + model.penalty(which='entities', p=arg.reg_exp, rweight=arg.reg_eweight)
+                    if ng > 0:
 
-                if arg.reg_rweight is not None:
-                    loss = loss + model.penalty(which='relations', p=arg.reg_exp, rweight=arg.reg_rweight)
+                        bs, _ = positives.size()
 
-                assert not torch.isnan(loss), 'Loss has become NaN'
+                        cand = ccandidates[ctarget] if arg.limit_negatives else range(len(i2r if ctarget == 1 else i2n))
+                        corruptions = torch.tensor(random.choices(cand, k=bs * ng), dtype=torch.long, device=d()).view(bs, ng)
 
-                loss.backward()
+                        s, p, o = positives[:, 0:1], positives[:, 1:2], positives[:, 2:3]
+                        if ctarget == 0:
+                            s = torch.cat([s, corruptions], dim=1)
+                        if ctarget == 1:
+                            p = torch.cat([p, corruptions], dim=1)
+                        if ctarget == 2:
+                            o = torch.cat([o, corruptions], dim=1)
 
-                sumloss += float(loss.item())
+                        # -- NB: two of the index vectors s, p o are now size (bs, 1) and the other is (bs, ng+1)
+                        #    We will let the model broadcast these to give us a score tensor of (bs, ng+1)
+                        #    In most cases we can optimize the decoder to broadcast late for better speed.
 
-                #print('emean: ', model.relations.grad.mean().item())
+                        if arg.loss == 'bce':
+                            labels = torch.cat([torch.ones(bs, 1), torch.zeros(bs, ng)], dim=1)
+                        elif arg.loss == 'ce':
+                            labels = torch.zeros(bs, dtype=torch.long)
+                            # -- CE loss treats the problem as a multiclass classification problem: for a positive triple,
+                            #    together with its k corruptions, identify which is the true triple. This is always triple 0.
+                            #    (It may seem like the model could easily cheat by always choosing triple 0, but the score
+                            #    function is order equivariant, so it can't choose by ordering.)
+
+                        if torch.cuda.is_available():
+                            triples = triples.cuda()
+                            labels = labels.cuda()
+
+                        out = model(s, p, o)
+                        assert out.size() == (bs, ng + 1), f'{out.size()=} {(bs, ng + 1)=}'
+
+                        if arg.loss == 'bce':
+                            loss = F.binary_cross_entropy_with_logits(out, labels, weight=weight, reduction=arg.lred)
+                        elif arg.loss == 'ce':
+                            loss = F.cross_entropy(out, labels, reduction=arg.lred)
+
+                        if arg.reg_eweight is not None:
+                            loss = loss + model.penalty(which='entities', p=arg.reg_exp, rweight=arg.reg_eweight)
+
+                        if arg.reg_rweight is not None:
+                            loss = loss + model.penalty(which='relations', p=arg.reg_exp, rweight=arg.reg_rweight)
+
+                        assert not torch.isnan(loss), 'Loss has become NaN'
+
+                        loss.backward()
+                        # No step yet, we accumulate the gradients over all corruptions.
+                        # -- this causes problems with modules like batchnorm, so be careful when porting.
+
+                        sumloss += float(loss.item())
+                        seen += bs; seeni += bs
 
                 opt.step()
 
-                seen += b; seeni += b
                 tbw.add_scalar('biases/train_loss', float(loss.item()), seen)
 
             # Evaluate
