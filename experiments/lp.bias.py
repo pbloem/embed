@@ -155,6 +155,8 @@ def go(arg):
 
             seeni, sumloss = 0, 0.0
             tforward = tbackward = 0
+            rforward = rbackward = 0
+            tic()
 
             for fr in trange(0, train.size(0), arg.batch):
                 to = min(train.size(0), fr + arg.batch)
@@ -218,22 +220,29 @@ def go(arg):
                         # No step yet, we accumulate the gradients over all corruptions.
                         # -- this causes problems with modules like batchnorm, so be careful when porting.
 
+                tic()
                 regloss = None
                 if arg.reg_eweight is not None:
                     regloss = model.penalty(which='entities', p=arg.reg_exp, rweight=arg.reg_eweight)
 
                 if arg.reg_rweight is not None:
                     regloss = model.penalty(which='relations', p=arg.reg_exp, rweight=arg.reg_rweight)
+                rforward += toc()
 
+                tic()
                 if regloss is not None:
                     sumloss += float(regloss.item())
                     regloss.backward()
+                rbackward += toc()
 
                 opt.step()
 
                 tbw.add_scalar('biases/train_loss', float(loss.item()), seen)
 
-            print(f'\n forward {tforward:.4}, backward {tbackward:.4}')
+            print(f'\n pred: forward {tforward:.4}, backward {tbackward:.4}')
+            print(f'    reg: forward {rforward:.4}, backward {rbackward:.4}')
+            print(f'  total: {toc():.4}')
+
 
             # Evaluate
             if ((e+1) % arg.eval_int == 0) or e == arg.epochs - 1:
