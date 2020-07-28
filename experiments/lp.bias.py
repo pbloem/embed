@@ -226,8 +226,8 @@ def go(arg):
                     regloss = model.penalty(which='relations', p=arg.reg_exp, rweight=arg.reg_rweight)
 
                 if regloss is not None:
-                    sumloss += float(loss.item())
-                    loss.backward()
+                    sumloss += float(regloss.item())
+                    regloss.backward()
 
                 opt.step()
 
