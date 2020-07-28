@@ -197,7 +197,7 @@ def go(arg):
                             #    function is order equivariant, so it can't choose by ordering.)
 
                         if torch.cuda.is_available():
-                            triples = triples.cuda()
+                            s, p, o = s.cuda(), p.cuda(), o.cuda()
                             labels = labels.cuda()
 
                         out = model(s, p, o)
