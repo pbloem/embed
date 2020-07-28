@@ -156,6 +156,7 @@ def go(arg):
             seeni, sumloss = 0, 0.0
             tforward = tbackward = 0
             rforward = rbackward = 0
+            tprep = tloss = 0
             tic()
 
             for fr in trange(0, train.size(0), arg.batch):
@@ -172,6 +173,7 @@ def go(arg):
 
                     if ng > 0:
 
+                        tic()
                         bs, _ = positives.size()
 
                         cand = ccandidates[ctarget] if arg.limit_negatives else range(len(i2r if ctarget == 1 else i2n))
@@ -198,12 +200,15 @@ def go(arg):
                             #    (It may seem like the model could easily cheat by always choosing triple 0, but the score
                             #    function is order equivariant, so it can't choose by ordering.)
 
+                        tprep += toc()
+
                         tic()
                         out = model(s, p, o)
                         tforward += toc()
 
                         assert out.size() == (bs, ng + 1), f'{out.size()=} {(bs, ng + 1)=}'
 
+                        tic()
                         if arg.loss == 'bce':
                             loss = F.binary_cross_entropy_with_logits(out, labels, weight=weight, reduction=arg.lred)
                         elif arg.loss == 'ce':
@@ -213,6 +218,7 @@ def go(arg):
 
                         sumloss += float(loss.item())
                         seen += bs; seeni += bs
+                        tloss += toc()
 
                         tic()
                         loss.backward()
@@ -241,6 +247,7 @@ def go(arg):
 
             print(f'\n pred: forward {tforward:.4}, backward {tbackward:.4}')
             print(f'    reg: forward {rforward:.4}, backward {rbackward:.4}')
+            print(f'            prep {tprep:.4}, loss {tloss:.4}')
             print(f'  total: {toc():.4}')
 
 
