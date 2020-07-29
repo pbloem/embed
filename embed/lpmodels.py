@@ -172,8 +172,9 @@ class LinkPredictor(nn.Module):
             # -- We let the decoder handle the broadcasting
 
             if self.biases:
-                pb = self.pbias if forward else self.pbias_bw,
-                scores = scores + self.sbias[si] + pb[pi] + self.obias[oi] + self.gbias
+                pb = self.pbias if forward else self.pbias_bw
+
+                scores = scores + (self.sbias[si] + pb[pi] + self.obias[oi] + self.gbias)
 
         if self.reciprocal:
             scores = scores / 2

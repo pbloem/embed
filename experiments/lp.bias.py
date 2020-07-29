@@ -253,9 +253,10 @@ def go(arg):
 
             if e == 0:
                 print(f'\n pred: forward {tforward:.4}, backward {tbackward:.4}')
-                print(f'    reg: forward {rforward:.4}, backward {rbackward:.4}')
-                print(f'            prep {tprep:.4}, loss {tloss:.4}')
-                print(f'  total: {toc():.4}')
+                print (f'   reg: forward {rforward:.4}, backward {rbackward:.4}')
+                print (f'           prep {tprep:.4}, loss {tloss:.4}')
+                print (f' total: {toc():.4}')
+            # -- NB: these numnber will not be correct unless CUDA_LAUNCH_BLOCKING is set to 1
 
             # Evaluate
             if ((e+1) % arg.eval_int == 0) or e == arg.epochs - 1:
