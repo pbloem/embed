@@ -208,8 +208,11 @@ def go(arg):
                                 #    (It may seem like the model could easily cheat by always choosing triple 0, but the score
                                 #    function is order equivariant, so it can't choose by ordering.)
 
+                        recip = None if not arg.reciprocal else ('head' if ctarget == 0 else 'tail')
+                        # -- We use the tail relations if the target is the relation (usually p-corruption is not used)
+
                         tic()
-                        out = model(s, p, o)
+                        out = model(s, p, o, recip=recip)
                         tforward += toc()
 
                         assert out.size() == (bs, ng + 1), f'{out.size()=} {(bs, ng + 1)=}'
@@ -256,7 +259,7 @@ def go(arg):
                 print (f'   reg: forward {rforward:.4}, backward {rbackward:.4}')
                 print (f'           prep {tprep:.4}, loss {tloss:.4}')
                 print (f' total: {toc():.4}')
-            # -- NB: these numnber will not be correct unless CUDA_LAUNCH_BLOCKING is set to 1
+                # -- NB: these numbers will not be accurate for GPU runs unless CUDA_LAUNCH_BLOCKING is set to 1
 
             # Evaluate
             if ((e+1) % arg.eval_int == 0) or e == arg.epochs - 1:

@@ -138,7 +138,7 @@ class LinkPredictor(nn.Module):
             if reciprocal:
                 self.pbias_bw = nn.Parameter(torch.zeros((r,)))
 
-    def forward(self, s, p, o):
+    def forward(self, s, p, o, recip=None):
         """
         Takes a batch of triples in s, p, o indices, and computes their scores.
 
@@ -152,12 +152,28 @@ class LinkPredictor(nn.Module):
         :param s:
         :param p:
         :param o:
+        :param recip: prediction mode, if this is a reciprocal model. 'head' for head prediction, 'tail' for tail
+            prediction, 'eval' for the average of both (i.e. for final scoring).
         :return:
         """
 
+        assert recip in [None, 'head', 'tail', 'eval']
+        assert self.reciprocal or (recip is None), 'Predictor must be set to model reciprocal relations for recip to be set'
+        if self.reciprocal and recip is None:
+            recip = 'eval'
+
         scores = 0
 
-        for forward in [True, False] if self.reciprocal else [True]:
+        if recip is None or recip == 'tail':
+            modes = [True] # forward only
+        elif recip == 'head':
+            modes = [False] # backward only
+        elif recip == 'eval':
+            modes = [True, False]
+        else:
+            raise Exception(f'{recip=}')
+
+        for forward in modes:
 
             si, pi, oi = (s, p, o) if forward else (o, p, s)
 
@@ -177,7 +193,7 @@ class LinkPredictor(nn.Module):
                 scores = scores + (self.sbias[si] + pb[pi] + self.obias[oi] + self.gbias)
 
         if self.reciprocal:
-            scores = scores / 2
+            scores = scores / len(modes)
 
         return scores
 
