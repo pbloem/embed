@@ -397,7 +397,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--momentum",
                         dest="momentum",
-                        help="Optimizer momentum (olny for SGD).",
+                        help="Optimizer momentum (only for SGD).",
                         default=0.0, type=float)
 
     parser.add_argument("--loss",

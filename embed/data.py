@@ -2,7 +2,8 @@ import torch
 
 import gzip, random, sys, os, wget, pickle, tqdm
 from collections import Counter
-import util
+
+from .util import here
 
 VALPROP = 0.4
 REST = '.rest'
@@ -39,23 +40,23 @@ def load(name, limit=None):
     """
 
     if name == 'fb': # Freebase 15k 237
-        train_file = util.here('data/fb15k237/train.txt')
-        val_file = util.here('data/fb15k237/valid.txt')
-        test_file = util.here('data/fb15k237/test.txt')
+        train_file = here('data/fb15k237/train.txt')
+        val_file = here('data/fb15k237/valid.txt')
+        test_file = here('data/fb15k237/test.txt')
 
     elif name == 'wn':
-        train_file = util.here('data/wn18rr/train.txt')
-        val_file = util.here('data/wn18rr/valid.txt')
-        test_file = util.here('data/wn18rr/test.txt')
+        train_file = here('data/wn18rr/train.txt')
+        val_file = here('data/wn18rr/valid.txt')
+        test_file = here('data/wn18rr/test.txt')
 
     else:
-        if os.path.isdir(util.here('data' + os.sep + name )):
-            train_file = util.here(f'data/{name}/train.txt')
-            val_file = util.here(f'data/{name}/valid.txt')
-            test_file = util.here(f'data/{name}/test.txt')
+        if os.path.isdir(here('data' + os.sep + name )):
+            train_file = here(f'data/{name}/train.txt')
+            val_file = here(f'data/{name}/valid.txt')
+            test_file = here(f'data/{name}/test.txt')
 
         else:
-            raise Exception(f'Could not find dataset with name {name} at location {util.here("data" + os.sep + name)}.')
+            raise Exception(f'Could not find dataset with name {name} at location {here("data" + os.sep + name)}.')
 
     train = load_strings(train_file)
     val   = load_strings(val_file)

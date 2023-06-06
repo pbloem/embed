@@ -3,8 +3,7 @@ import torch, os, sys, random
 from torch import nn
 import torch.nn.functional as F
 
-import util
-from util import d, tic, toc
+from .util import d, tic, toc
 
 from abc import abstractmethod
 

@@ -11,6 +11,7 @@ setup(name='embed',
       install_requires=[
             'torch',
             'tensorboard',
-            'tqdm'
+            'tqdm',
+            'wget'
       ],
       zip_safe=False)

@@ -11,6 +11,12 @@ import re
 
 tics = []
 
+"""
+General utility functions. 
+
+TODO: Some of these should be removed, or moved to lputils. 
+"""
+
 def prt(verbose, *args, **kwargs):
     if verbose:
         print(*args, **kwargs)
